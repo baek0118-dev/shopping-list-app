@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>쇼핑 리스트</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 500px;
+            padding: 30px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 28px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #5568d3;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        .list-container {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .list-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .list-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+
+        .list-container::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 10px;
+        }
+
+        .list-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            transition: all 0.2s;
+        }
+
+        .list-item:hover {
+            background: #f0f0f0;
+            transform: translateX(5px);
+        }
+
+        .list-item.completed {
+            opacity: 0.6;
+        }
+
+        .list-item.completed .item-text {
+            text-decoration: line-through;
+            color: #999;
+        }
+
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: #667eea;
+        }
+
+        .item-text {
+            flex: 1;
+            color: #333;
+            font-size: 16px;
+            word-break: break-word;
+        }
+
+        .delete-btn {
+            padding: 8px 12px;
+            background: #ff6b6b;
+            font-size: 14px;
+            min-width: auto;
+        }
+
+        .delete-btn:hover {
+            background: #ff5252;
+        }
+
+        .empty-message {
+            text-align: center;
+            color: #999;
+            padding: 40px 20px;
+            font-size: 16px;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #e0e0e0;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛒 쇼핑 리스트</h1>
+
+        <div class="input-group">
+            <input
+                type="text"
+                id="itemInput"
+                placeholder="추가할 아이템을 입력하세요..."
+                autocomplete="off"
+            >
+            <button onclick="addItem()">추가</button>
+        </div>
+
+        <div class="list-container">
+            <div id="listItems"></div>
+        </div>
+
+        <div id="emptyMessage" class="empty-message">
+            아이템을 추가해보세요! 👇
+        </div>
+
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-number" id="totalCount">0</div>
+                <div class="stat-label">전체</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number" id="completeCount">0</div>
+                <div class="stat-label">완료</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number" id="remainCount">0</div>
+                <div class="stat-label">남음</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const listItems = document.getElementById('listItems');
+        const itemInput = document.getElementById('itemInput');
+        const emptyMessage = document.getElementById('emptyMessage');
+        const STORAGE_KEY = 'shopping-list-items';
+
+        // 초기 로드
+        loadItems();
+
+        // 엔터 키로 아이템 추가
+        itemInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                addItem();
+            }
+        });
+
+        function addItem() {
+            const text = itemInput.value.trim();
+
+            if (!text) {
+                alert('아이템을 입력해주세요!');
+                itemInput.focus();
+                return;
+            }
+
+            const items = getItems();
+            const newItem = {
+                id: Date.now(),
+                text: text,
+                completed: false
+            };
+
+            items.push(newItem);
+            saveItems(items);
+            loadItems();
+
+            itemInput.value = '';
+            itemInput.focus();
+        }
+
+        function deleteItem(id) {
+            if (confirm('정말 삭제하시겠습니까?')) {
+                let items = getItems();
+                items = items.filter(item => item.id !== id);
+                saveItems(items);
+                loadItems();
+            }
+        }
+
+        function toggleComplete(id) {
+            const items = getItems();
+            const item = items.find(item => item.id === id);
+            if (item) {
+                item.completed = !item.completed;
+                saveItems(items);
+                loadItems();
+            }
+        }
+
+        function loadItems() {
+            const items = getItems();
+            listItems.innerHTML = '';
+
+            if (items.length === 0) {
+                emptyMessage.style.display = 'block';
+            } else {
+                emptyMessage.style.display = 'none';
+                items.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = `list-item ${item.completed ? 'completed' : ''}`;
+                    div.innerHTML = `
+                        <input
+                            type="checkbox"
+                            ${item.completed ? 'checked' : ''}
+                            onchange="toggleComplete(${item.id})"
+                        >
+                        <span class="item-text">${escapeHtml(item.text)}</span>
+                        <button class="delete-btn" onclick="deleteItem(${item.id})">삭제</button>
+                    `;
+                    listItems.appendChild(div);
+                });
+            }
+
+            updateStats();
+        }
+
+        function updateStats() {
+            const items = getItems();
+            const total = items.length;
+            const completed = items.filter(item => item.completed).length;
+            const remaining = total - completed;
+
+            document.getElementById('totalCount').textContent = total;
+            document.getElementById('completeCount').textContent = completed;
+            document.getElementById('remainCount').textContent = remaining;
+        }
+
+        function getItems() {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            return stored ? JSON.parse(stored) : [];
+        }
+
+        function saveItems(items) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
