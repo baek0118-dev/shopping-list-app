@@ -216,11 +216,18 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         const listItems = document.getElementById('listItems');
         const itemInput = document.getElementById('itemInput');
         const emptyMessage = document.getElementById('emptyMessage');
-        const STORAGE_KEY = 'shopping-list-items';
+
+        const SUPABASE_URL = 'https://thssvhufnmgqnzeqktmg.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_dNVmTn27n9MUtWYU6GvMrg_Xfaqghmi';
+
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        let isLoading = false;
 
         // 초기 로드
         loadItems();
@@ -232,7 +239,7 @@
             }
         });
 
-        function addItem() {
+        async function addItem() {
             const text = itemInput.value.trim();
 
             if (!text) {
@@ -241,69 +248,115 @@
                 return;
             }
 
-            const items = getItems();
-            const newItem = {
-                id: Date.now(),
-                text: text,
-                completed: false
-            };
+            if (isLoading) return;
+            isLoading = true;
 
-            items.push(newItem);
-            saveItems(items);
-            loadItems();
+            try {
+                const { data, error } = await supabase
+                    .from('shopping_items')
+                    .insert([{ text: text, completed: false }])
+                    .select();
 
-            itemInput.value = '';
-            itemInput.focus();
+                if (error) throw error;
+
+                itemInput.value = '';
+                itemInput.focus();
+                loadItems();
+            } catch (error) {
+                alert('아이템 추가 실패: ' + error.message);
+            } finally {
+                isLoading = false;
+            }
         }
 
-        function deleteItem(id) {
+        async function deleteItem(id) {
             if (confirm('정말 삭제하시겠습니까?')) {
-                let items = getItems();
-                items = items.filter(item => item.id !== id);
-                saveItems(items);
-                loadItems();
+                if (isLoading) return;
+                isLoading = true;
+
+                try {
+                    const { error } = await supabase
+                        .from('shopping_items')
+                        .delete()
+                        .eq('id', id);
+
+                    if (error) throw error;
+                    loadItems();
+                } catch (error) {
+                    alert('삭제 실패: ' + error.message);
+                } finally {
+                    isLoading = false;
+                }
             }
         }
 
-        function toggleComplete(id) {
-            const items = getItems();
-            const item = items.find(item => item.id === id);
-            if (item) {
-                item.completed = !item.completed;
-                saveItems(items);
+        async function toggleComplete(id) {
+            if (isLoading) return;
+            isLoading = true;
+
+            try {
+                const { data, error: fetchError } = await supabase
+                    .from('shopping_items')
+                    .select('completed')
+                    .eq('id', id)
+                    .single();
+
+                if (fetchError) throw fetchError;
+
+                const { error: updateError } = await supabase
+                    .from('shopping_items')
+                    .update({ completed: !data.completed })
+                    .eq('id', id);
+
+                if (updateError) throw updateError;
                 loadItems();
+            } catch (error) {
+                alert('업데이트 실패: ' + error.message);
+            } finally {
+                isLoading = false;
             }
         }
 
-        function loadItems() {
-            const items = getItems();
-            listItems.innerHTML = '';
+        async function loadItems() {
+            try {
+                const { data, error } = await supabase
+                    .from('shopping_items')
+                    .select('*')
+                    .order('id', { ascending: false });
 
-            if (items.length === 0) {
+                if (error) throw error;
+
+                listItems.innerHTML = '';
+
+                if (!data || data.length === 0) {
+                    emptyMessage.style.display = 'block';
+                } else {
+                    emptyMessage.style.display = 'none';
+                    data.forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = `list-item ${item.completed ? 'completed' : ''}`;
+                        div.innerHTML = `
+                            <input
+                                type="checkbox"
+                                ${item.completed ? 'checked' : ''}
+                                onchange="toggleComplete(${item.id})"
+                            >
+                            <span class="item-text">${escapeHtml(item.text)}</span>
+                            <button class="delete-btn" onclick="deleteItem(${item.id})">삭제</button>
+                        `;
+                        listItems.appendChild(div);
+                    });
+                }
+
+                updateStats(data || []);
+            } catch (error) {
+                console.error('데이터 로드 실패:', error);
+                emptyMessage.textContent = '데이터 로드 실패: ' + error.message;
                 emptyMessage.style.display = 'block';
-            } else {
-                emptyMessage.style.display = 'none';
-                items.forEach(item => {
-                    const div = document.createElement('div');
-                    div.className = `list-item ${item.completed ? 'completed' : ''}`;
-                    div.innerHTML = `
-                        <input
-                            type="checkbox"
-                            ${item.completed ? 'checked' : ''}
-                            onchange="toggleComplete(${item.id})"
-                        >
-                        <span class="item-text">${escapeHtml(item.text)}</span>
-                        <button class="delete-btn" onclick="deleteItem(${item.id})">삭제</button>
-                    `;
-                    listItems.appendChild(div);
-                });
             }
-
-            updateStats();
         }
 
-        function updateStats() {
-            const items = getItems();
+        function updateStats(items) {
             const total = items.length;
             const completed = items.filter(item => item.completed).length;
             const remaining = total - completed;
@@ -311,15 +364,6 @@
             document.getElementById('totalCount').textContent = total;
             document.getElementById('completeCount').textContent = completed;
             document.getElementById('remainCount').textContent = remaining;
-        }
-
-        function getItems() {
-            const stored = localStorage.getItem(STORAGE_KEY);
-            return stored ? JSON.parse(stored) : [];
-        }
-
-        function saveItems(items) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
         }
 
         function escapeHtml(text) {
